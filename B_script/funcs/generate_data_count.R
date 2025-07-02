@@ -22,18 +22,24 @@ generate_data_count <- function(
       )
     )
   
-  
   list_dbs <- 
     if (type == 'pre_post') { c('SPEDW') } else { c('SAEDW', 'SUEDW') }
   
   list_dbs <- rlang::set_names(list_dbs)
   
-  list_dbs %>% 
+  list_views <-
+    list_dbs %>% 
     map(~ odbc::odbcListObjects(conn, .x, schema)) %>% 
     map(~ pull(.x, name)) %>% 
     map(~ str_subset(.x, '_dim_', negate = T))
   
+  df_views <-
+    list_views %>% 
+    imap(~ tibble(col = .x, db = .y)) %>% 
+    reduce(full_join, by = 'col')
+  
+  odbc::odbcListObjects(conn, 'SUEDW', schema)
     
 }
 
-generate_data_count()
+generate_data_count(type = 'sa_su')
