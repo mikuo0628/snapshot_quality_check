@@ -71,17 +71,32 @@ generate_data_count <- function(
     map(~ pull(.x, name)) %>% 
     map(~ str_subset(.x, '_dim_', negate = T))
   
+  browser()
   df_views <-
     list_views %>% 
     imap(~ tibble(view = .x, db = .y)) %>% 
-    reduce(full_join, by = 'col')
+    reduce(full_join, by = 'view')
+  
+  if (type == 'sa_su') {
+    
+    df_views <- 
+      df_views %>% 
+      filter(!if_any(matches('^db'), is.na)) %>% 
+      pivot_longer(
+        cols      = matches('^db'),
+        names_to  = 'side',
+        values_to = 'db'
+      ) %>% 
+      select(-side)
+    
+  }
   
   run_dt_tm <- Sys.time()
   
   system.time(
     df_count_results <- 
       df_views %>% 
-      filter(!if_any(matches('^db'), is.na)) %>% 
+      filter(!is.na(db)) %>% 
       pmap(
         \(view, db){
           
