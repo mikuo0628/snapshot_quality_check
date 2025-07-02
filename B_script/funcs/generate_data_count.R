@@ -71,7 +71,6 @@ generate_data_count <- function(
     map(~ pull(.x, name)) %>% 
     map(~ str_subset(.x, '_dim_', negate = T))
   
-  browser()
   df_views <-
     list_views %>% 
     imap(~ tibble(view = .x, db = .y)) %>% 
@@ -158,10 +157,24 @@ generate_data_count <- function(
                           
                         } else if (type == 'int') {
                           
-                          browser()
-                          select(lzy_tbl, all_of(col)) %>% 
-                            count(!!sym(col)) %>% 
-                            collect()
+                          try_int <- 
+                            try(
+                              select(lzy_tbl, all_of(col)) %>% 
+                                count(!!sym(col)) %>% 
+                                collect()
+                            )
+                          
+                          if (inherits(try_int, 'try-error')) {
+                            
+                            browser()
+                            try_int <- 
+                              select(lzy_tbl, all_of(col)) %>% 
+                              collect() %>% 
+                              count(!!sym(col))
+                            
+                          }
+                          
+                          try_int
                           
                         } else if (type == 'float') {
                           
@@ -200,7 +213,7 @@ generate_data_count <- function(
                       paste(check_msg, 'Retrieving data') %>% 
                         log_error()
                       
-                    } else if (nrow(try_result) == 0) {
+                    } else if (nrow(try_results) == 0) {
                       
                       paste(check_msg, 'No results') %>% 
                         log_warn()
@@ -232,6 +245,6 @@ generate_data_count <- function(
 
 
 
-generate_data_count(mart = 'PAWS Linked Zone', schema = 'na0014aa')
+test <- generate_data_count(mart = 'PAWS Linked Zone', schema = 'na0014aa', type = 'pre_post')
 generate_data_count(type = 'sa_su')
 
