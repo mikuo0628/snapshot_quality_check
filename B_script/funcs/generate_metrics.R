@@ -75,7 +75,7 @@ generate_match <- function(df_output, test_run = F) {
                     suffix = paste0('_', names(.))
                   ) %>% 
                   mutate(
-                    diff = .[[length(.)]] - .[[length(.) - ]]
+                    diff = .[[length(.)]] - .[[length(.) - 1]]
                   )
                 
                 df_compare <- 
