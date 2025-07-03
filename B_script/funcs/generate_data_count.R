@@ -211,10 +211,14 @@ generate_data_count <- function(
                           paste(check_msg, 'No results') %>% 
                             log_warn()
                           
-                        } else {
+                        } else if (nrow(try_results) != 0) {
                           
                           paste(check_msg, 'Captured') %>% 
                             log_success()
+                          
+                        } else {
+                          
+                          browser()
                           
                         }
                         
@@ -238,9 +242,3 @@ generate_data_count <- function(
   df_count_results <- df_count_results %>% mutate(run_dt_tm = run_dt_tm)
     
 }
-
-
-
-test <- generate_data_count(mart = 'PAWS Linked Zone', schema = 'na0014aa', type = 'pre_post')
-test <- generate_data_count(type = 'sa_su')
-

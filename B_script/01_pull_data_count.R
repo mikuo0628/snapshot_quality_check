@@ -16,6 +16,9 @@ require(lubridate)
 require(phrdwRdata)
 require(dbplyr)
 
+list.files(here::here('B_script/funcs'), full.names = T) %>% 
+  sapply(source)
+
 # schema    <- 'na0014aa'
 schema    <- 'phs_cd'
 # mart      <- 'PAWS Linked Zone'
@@ -60,26 +63,29 @@ get_logger_meta_variables(namespace = log_ns) %>%
 
 # Connect and count -------------------------------------------------------
 
-withr::with_db_connection(
-  list(
-    conn = 
-      phrdwRdata::connect_to_phrdw(mart = 'cd')
-      # odbc::dbConnect(
-      #   drv    = odbc::odbc(),
-      #   Driver = '{SQL Server}',
-      #   Server = server
-      # )
-  ),
-  {
-    
-    browser()
-    # odbc::odbcListObjects(conn, 'SAEDW', 'phs_cd')
-    list_views <-
-      map(
-        databases,
-        ~ odbc::odbcListObjects(conn, .x, schema)
-      )
-    
-  }
-)
+df_output <- 
+  generate_data_count(
+    mart   = 'CD',
+    schema = 'phs_cd',
+    type   = 'sa_su'
+  )
 
+
+
+# Save output -------------------------------------------------------------
+
+if (!file.exists(files_rds['counts'])) {
+  
+  saveRDS(df_output, file = files_rds['counts'])
+  
+} else {
+  
+  read_rds(files_rds['counts']) %>% 
+    bind_rows(df_output) %>% 
+    distinct() %>% 
+    group_by(run_dt_tm) %>% 
+    slice_max(run_dt_tm, n = n_keep) %>% 
+    ungroup() %>% 
+    saveRDS(file = files_rds['counts'])
+  
+}
