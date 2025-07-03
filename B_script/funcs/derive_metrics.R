@@ -1,4 +1,4 @@
-derive_metrics <- function(df_output, test_run = F) {
+generate_metrics <- function(df_output, test_run = F) {
   
   require(tidyverse)
   require(lubridate)
