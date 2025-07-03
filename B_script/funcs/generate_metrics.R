@@ -1,5 +1,8 @@
-generate_match <- function(df_output, test_run = F) {
+generate_metrics <- function(df_output, test_run = F) {
   
+  require(tidyverse)
+  require(lubridate)
+  browser()
   # check if this will be pre/post or sa/su
   # and reshape accordingly
   df_output <- 
@@ -11,10 +14,21 @@ generate_match <- function(df_output, test_run = F) {
       
     } else {
       
-      slice_max(df_output, run_dt_tm, n = 2, by = c(view, col)) %>% 
+      slice_max(df_output, run_dt_tm, n = 2, by = c(db, view, col)) %>% 
         group_by(run_dt_tm)
       
     }
+  
+  df_output <-
+    mutate(
+      df_output, 
+      group = 
+        factor(
+          ifelse(cur_group_id() == 1, 'baseline', 'test'),
+          levels = c('baseline', 'test')
+        )
+    ) %>% 
+    ungroup()
   
   if (test_run) {
     
@@ -22,16 +36,11 @@ generate_match <- function(df_output, test_run = F) {
     
   }
   
-  df_output <- 
-    mutate(
-      df_output, group = ifelse(cur_group_id() == 1, 'baseline', 'test')
-    ) %>% 
-    ungroup()
-  
   compare_groups <- distinct(select(df_output, run_dt_tm, db, group))
   
   df_output %>% 
-    select(-run_dt_tm) %>% 
+    select(-matches('db|run_dt_tm')) %>%
+    arrange(view, col, group) %>% 
     pivot_wider(
       names_from  = group,
       values_from = result
@@ -67,7 +76,7 @@ generate_match <- function(df_output, test_run = F) {
                 )
               ) {
                 
-                df_cmpare <- 
+                df_compare <- 
                   df_compare %>% 
                   reduce(
                     left_join,
@@ -145,3 +154,5 @@ generate_match <- function(df_output, test_run = F) {
     }
   
 }
+
+generate_metrics(read_rds(files_rds['counts']))
