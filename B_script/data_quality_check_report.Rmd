@@ -1,0 +1,474 @@
+---
+date: "`r format(Sys.Date(), '%Y-%m-%d')`"
+output: 
+  html_document:
+    toc:             false
+    toc_float:       true
+    number_sections: true
+    code_folding:    hide
+    df_print:        kable
+    embed-resources: true
+    
+params:
+  use_title: 'View Baseline Comparsion'
+
+title: "`r params$use_title`"
+---
+
+# Workspace setup
+```{r include=FALSE}
+#| label: workspace
+#| warning: false
+#| message: false
+
+here::i_am('B_script/data_quality_check_report.Rmd')
+knitr::opts_chunk$set(warning   = F)
+knitr::opts_chunk$set(message   = F)
+knitr::opts_chunk$set(fig.align = 'center')
+knitr::opts_chunk$set(dpi       = 200)
+# knitr::opts_chunk$set(echo = TRUE)
+
+sapply(
+  c(
+    'tidyverse',
+    'magrittr',
+    'lubridate',
+    'gt'
+  ),
+  require,
+  character.only = T
+)
+
+interactive_tbl <- function(tbl, use_filter = T, n = 20, active = F) {
+  
+  gt::gt(tbl) %>% 
+    tab_style(
+      style = cell_text(whitespace = 'break-spaces'),
+      locations =
+        cells_body(
+          columns = where(is.character)
+        )
+    ) %>% 
+    gt::opt_interactive(
+      active            = active, 
+      use_filters       = use_filter,
+      use_compact_mode  = T,
+      page_size_default = n
+  )
+  
+}
+
+```
+
+# Summary
+
+## Comparison groups
+```{r}
+#| label: summary-groupings
+
+compare_groups %>% 
+  arrange(group) %>% 
+  pivot_wider(
+    names_from  = group, 
+    values_from = run_dt_tm
+  ) %>% 
+  knitr::kable()
+```
+
+# Columns and column values checks
+
+## Views with missing or new columns
+```{r}
+#| label: col-check
+
+df_metrics %>% 
+  filter(!map_lgl(col_check, is.null)) %>% 
+  {
+    
+    if (nrow(.) == 0) {
+      
+      cat('No missing or new cols')
+      
+    } else {
+      
+    pull(., col_check) %>% 
+      bind_rows() %>% 
+      gt() %>% 
+      tab_style(
+        style = cell_fill((color = alpha('salmon', 0.5))),
+        locations =
+          cells_body(
+            columns = baseline,
+            rows    = baseline == 'missing'
+          )
+      ) %>% 
+      tab_style(
+        style = cell_fill((color = alpha('salmon', 0.5))),
+        locations =
+          cells_body(
+            columns = test,
+            rows    = test == 'missing'
+          )
+      )
+      
+    }
+    
+  }
+
+```
+
+## Views with non-`float` columns containing missing or new values
+```{r}
+#| label: val-check
+
+knit_val_chk <-
+  df_metrics %>% 
+  select(row, view, col, val_check) %>% 
+  filter(!map_lgl(val_check, is.null)) %T>% 
+  {
+    
+    tbl_val_chk <<-
+      group_by(., view) %>% 
+      summarise(n_cols = n()) %>% 
+      mutate(
+        link = 
+          sprintf(
+            '[link](#val_chk_%s)',
+            view
+          )
+      )
+    
+  } %>% 
+  split(.$view) %>% 
+  map(
+    ~ {
+      
+      df_by_view <- .x
+      
+      tbl_summary <-
+        mutate(
+          df_by_view,
+          .keep = 'none',
+          view = view, col = col,
+          n_val_issues = map_int(val_check, nrow)
+        ) %>% 
+          knitr::kable() %>% 
+          paste(collapse = '\n') %>%
+          paste(
+            '#### Summary',
+            .,
+            sep = '\n'
+          )
+      
+      pmap(
+        df_by_view,
+        \(row, view, col, val_check) {
+          
+          knitr::knit_expand(
+            text =
+              paste(
+                '#### {{ col }}',
+                '``` {r}',
+                '#| label: val-chk-[{{ view }}].[{{ col }}]',
+                "
+                df_metrics %>%
+                  filter(
+                    .data$row == '{{ row }}',
+                  ) %>%
+                  pluck('val_check', 1) %>% 
+                  gt() %>% 
+                  tab_style(
+                    style = cell_text(whitespace = 'break-spaces'),
+                    locations =
+                      cells_body(
+                        columns = where(is.character)
+                      )
+                  ) %>% 
+                  tab_style(
+                    style = cell_fill(color = alpha('salmon', 0.5)),
+                    locations = 
+                      cells_body(
+                        columns = status,
+                        rows    = status == 'missing'
+                      )
+                  )
+                ",
+                  
+                '```',
+                sep = '\n'
+              )
+          )
+          
+        }
+      ) %>% 
+        paste(collapse = '\n\n') %>% 
+        paste(tbl_summary, ., sep = '\n\n') %>% 
+        paste(
+          sprintf(
+            '### %s {.tabset #%s}', 
+            unique(df_by_view$view),
+            paste0('val_chk_', unique(df_by_view$view))
+          ),
+          ., sep = '\n\n'
+        )
+      
+    }
+  ) %>% 
+  paste(collapse = '\n\n')
+
+tbl_val_chk %>% 
+  knitr::kable()
+
+```
+
+`r knitr::knit(text = knit_val_chk)`
+
+# Counts
+
+## High level view record counts
+```{r}
+#| label: view-row-counts
+
+df_metrics %>% 
+  filter(type != 'float') %>% 
+  # pluck('df_compare', 1)
+  mutate(
+    .keep = 'none',
+    view = view, col = col, type = type,
+    n = 
+      map(
+        df_compare, 
+        ~ list(.x$n_baseline, .x$n_test) %>% 
+          map(sum, na.rm = T) %>% 
+          set_names(c('baseline', 'test'))
+      )
+  ) %>% 
+  unnest_wider(n) %>% 
+  mutate(diff = test - baseline) %>% 
+  count(view, baseline, test, diff) %>% 
+  group_by(view) %>% 
+  filter(diff >= 0 & n == max(na.rm = T, n)) %>%
+  # filter(diff < 0) %>% 
+  ungroup() %>% 
+  select(-n) %>% 
+  gt() %>% 
+  cols_align(align = 'right', where(is.character)) %>% 
+  fmt_number(
+    columns = c(baseline, test),
+    use_seps = T,
+    drop_trailing_zeros = T
+  ) %>% 
+  tab_style(
+    style = cell_fill(color = alpha('turquoise', 0.5)),
+    locations =
+      cells_body(
+        columns = diff,
+        rows    = diff >= 0
+      )
+  ) %>% 
+  tab_style(
+    style = cell_fill(color = alpha('salmon', 0.5)),
+    locations =
+      cells_body(
+        columns = diff,
+        rows    = diff < 0
+      )
+  )
+
+```
+
+## Views with non-`float` columns containing count differences
+```{r}
+#| label: col-val-counts
+
+knit_counts <- 
+  df_metrics %>% 
+  filter(type != 'float') %>% 
+  filter(map_lgl(col_check, is.null)) %>% 
+  select(
+    row, view, col, type, df_compare
+  ) %>%
+  mutate(
+    df_compare =
+      map(df_compare, ~ filter(.x, diff != 0))
+  ) %>% 
+  filter(map_lgl(df_compare, ~ nrow(.x) != 0)) %T>% 
+  {
+    
+    tbl_counts <<-
+      group_by(., view) %>%
+      summarise(n_cols = n()) %>%
+      mutate(
+        link =
+          sprintf(
+            '[link](#cnt_%s)',
+            view
+          )
+      )
+      
+      # mutate(
+      #   ., 
+      #   .keep = 'none',
+      #   view = view, col = col, type = type,
+      #   n_vals_with_diff_count = map_int(df_compare, nrow),
+      #   link =
+      #     sprintf(
+      #       '[link](#cnt_%s)', paste(view, col, collapse = '_')
+      #     )
+      # )
+    
+  } %>% 
+  split(.$view) %>% 
+  map(
+    ~ {
+      
+      df_by_view <- .x
+      
+      tbl_summary <-
+        mutate(
+          df_by_view,
+          .keep = 'none',
+          view = view, col = col,
+          n_col_issues = map_int(df_compare, nrow)
+        ) %>% 
+          knitr::kable() %>% 
+          paste(collapse = '\n') %>%
+          paste(
+            '#### Summary',
+            .,
+            sep = '\n'
+          )
+      
+      pmap(
+        df_by_view,
+        \(row, view, col, type, df_compare) {
+          
+          knitr::knit_expand(
+            text =
+              paste(
+                '#### {{ col }}',
+                '``` {r}',
+                '#| label: col_cnt-[{{ view }}].[{{ col }}]',
+                "
+                df_metrics %>%
+                  filter(
+                    .data$row == '{{ row }}',
+                  ) %>%
+                  pluck('df_compare', 1) %>% 
+                  filter(.data$diff != 0) %>% 
+                  gt() %>% 
+                  tab_style(
+                    style = cell_text(whitespace = 'break-spaces'),
+                    locations =
+                      cells_body(
+                        columns = where(is.character)
+                      )
+                  )
+                ",
+                  
+                '```',
+                sep = '\n'
+              )
+          )
+          
+        }
+      ) %>% 
+        paste(collapse = '\n\n') %>% 
+        paste(tbl_summary, ., sep = '\n\n') %>% 
+        paste(
+          sprintf(
+            '### %s {.tabset #%s}', 
+            unique(df_by_view$view),
+            paste0('cnt_', unique(df_by_view$view))
+          ),
+          ., sep = '\n\n'
+        )
+      
+    }
+  ) %>% 
+  paste(collapse = '\n\n')
+
+tbl_counts %>% 
+  knitr::kable()
+
+
+```
+
+`r knitr::knit(text = knit_counts)`
+
+## Testing for distribution changes
+
+-  only for columns with more than one level
+-  only for columns with differences in the counts of the levels
+
+```{r}
+#| label: stats-test
+
+alpha <- 0.05
+df_metrics %>% 
+  filter(type != 'float') %>% 
+  select(row, view, col, type, df_compare) %>% 
+  filter(map_lgl(df_compare, ~ any(.x$diff != 0))) %>% 
+  filter(map_lgl(df_compare, ~ nrow(.x) != 1)) %T>% 
+  {
+    
+    tbl_counts <<-
+      group_by(., view) %>%
+      summarise(n_cols = n()) %>%
+      mutate(
+        link =
+          sprintf(
+            '[link](#cnt_%s)',
+            view
+          )
+      )
+    
+  } %>% 
+  split(.$view) %>% 
+  map(
+    ~ {
+      
+      df_by_view <- .x
+      browser()
+      
+      df_by_view %>% 
+        pmap(
+          \(row, view, col, type, df_compare) {
+            
+            browser('processing df_compare')
+            
+            #1 Chi-squared Test of independence first
+            tbl_contingency <- 
+              as.table(rbind(df_compare$n_baseline, df_compare$n_test))
+            
+            test_overall <- chisq.test(tbl_contingency)
+            
+            #1.1 If CST fails assumption, use Fisher's Exact Test
+            fet_check <- 
+              sum(test_overall$expected < 5) / length(test_overall$expected) > 0.2 ||
+              any(test_overall$expected < 1)
+            
+            if (fet_check) { test_overall <- fisher.test(tbl_contingency) }
+            
+            #2 if col's overall change is significant, proceed to post-hoc
+            if (test_overall$p.value < alpha) {
+              
+              #2.1 Standardized Residual Analysis
+              df_compare[
+              ]
+              
+                abs(test_overall$stdres) > case_match(alpha, 0.05 ~ 2, 0.001 ~ 3)
+                df_compare
+              
+            }
+            
+            
+            
+          }
+        )
+      
+    }
+  )
+
+```
+
