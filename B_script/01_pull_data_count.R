@@ -16,8 +16,10 @@ require(lubridate)
 require(phrdwRdata)
 require(dbplyr)
 
-list.files(here::here('B_script/funcs'), full.names = T) %>% 
-  sapply(source)
+sapply(
+  list.files(here::here('B_script/funcs'), full.names = T),
+  source
+)
 
 # schema    <- 'na0014aa'
 schema    <- 'phs_cd'

@@ -57,10 +57,10 @@ generate_data_count <- function(
       mutate,
       type =
         case_when(
-          str_detect(type, 'int')           ~ 'int',
-          str_detect(type, 'float|numeric') ~ 'float',
-          str_detect(type, 'char|bit')      ~ 'char',
-          str_detect(type, 'date')          ~ 'date',
+          str_detect(type, 'int')                   ~ 'int',
+          str_detect(type, 'float|numeric|decimal') ~ 'float',
+          str_detect(type, 'char|bit')              ~ 'char',
+          str_detect(type, 'time|date')             ~ 'date',
           .default = type
         )
     )
@@ -83,7 +83,7 @@ generate_data_count <- function(
   system.time(
     df_count_results <- 
       df_views %>% 
-      # filter(!is.na(db)) %>% 
+      # filter(!is.na(db)) %>%
       pmap(
         \(view, dbs){
           
@@ -159,7 +159,6 @@ generate_data_count <- function(
                               
                               if (inherits(try_int, 'try-error')) {
                                 
-                                browser()
                                 try_int <- 
                                   select(lzy_tbl, all_of(col)) %>% 
                                   collect() %>% 
@@ -239,6 +238,6 @@ generate_data_count <- function(
       )
   )
   
-  df_count_results <- df_count_results %>% mutate(run_dt_tm = run_dt_tm)
+  return(mutate(df_count_results, run_dt_tm = run_dt_tm))
     
 }
