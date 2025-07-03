@@ -73,167 +73,163 @@ generate_data_count <- function(
   
   df_views <-
     list_views %>% 
-    imap(~ tibble(view = .x, db = .y)) %>% 
-    reduce(full_join, by = 'view')
-  
-  if (type == 'sa_su') {
-    
-    df_views <- 
-      df_views %>% 
-      filter(!if_any(matches('^db'), is.na)) %>% 
-      pivot_longer(
-        cols      = matches('^db'),
-        names_to  = 'side',
-        values_to = 'db'
-      ) %>% 
-      select(-side)
-    
-  }
+    imap(~ tibble(view = .x, dbs = .y)) %>% 
+    reduce(full_join, by = 'view') %>% 
+    nest(dbs = matches('^dbs')) %>% 
+    mutate(dbs = map(dbs, ~ unname(unlist(.x))))
   
   run_dt_tm <- Sys.time()
   
   system.time(
     df_count_results <- 
       df_views %>% 
-      filter(!is.na(db)) %>% 
+      # filter(!is.na(db)) %>% 
       pmap(
-        \(view, db){
+        \(view, dbs){
           
-          log_info(
-            sprintf(
-              '==== View processing %s /%s: %s',
-              which(view == df_views$view),
-              nrow(df_views),
-              view
-            )
-          )
-          
-          lzy_tbl <- tbl(conns[[db]], in_schema(schema, view))
-          cols    <- colnames(lzy_tbl) %>% str_subset('_(id|key)$', negate = T)
-          
-          tibble(
-            view = view,
-            col  = cols
-          ) %>% 
-            left_join(
-              select(
-                list_col_types[[db]],
-                view, col, type
-              ),
-              by = c('view', 'col')
-            ) %>% 
-            mutate(n = rownames(.), .before = 1) %>% 
-            {
+          map_dfr(
+            rlang::set_names(na.omit(dbs)),
+            \(db) {
               
-              df_temp <- .
-              n_max   <- nrow(df_temp)
+              log_info(
+                sprintf(
+                  '==== View processing %s /%s: [%s].[%s]',
+                  which(view == df_views$view),
+                  nrow(df_views),
+                  db, view
+                )
+              )
               
-              list_counts <- 
-                pmap(
-                  df_temp,
-                  \(n, view, col, type) {
-                    
-                    try_results <- 
-                      try(
+              lzy_tbl <- tbl(conns[[db]], in_schema(schema, view))
+              cols    <- str_subset(colnames(lzy_tbl), '_(id|key)$', negate = T)
+              
+              tibble(
+                db   = db,
+                view = view,
+                col  = cols
+              ) %>% 
+                left_join(
+                  select(
+                    list_col_types[[db]],
+                    view, col, type
+                  ),
+                  by = c('view', 'col')
+                ) %>% 
+                mutate(n = rownames(.), .before = 1) %>% 
+                {
+                  
+                  df_temp <- .
+                  n_max   <- nrow(df_temp)
+                  
+                  list_counts <- 
+                    pmap(
+                      df_temp,
+                      \(n, db, view, col, type) {
                         
-                        if (type == 'date') {
-                          
-                          select(lzy_tbl, all_of(col)) %>% 
-                            collect() %>% 
-                            mutate(across(everything(), lubridate::ymd)) %>% 
-                            mutate(
-                              .keep = 'none',
-                              year  = year(!!sym(col)),
-                              month = month(!!sym(col)),
-                            ) %>% 
-                            mutate(across(everything(), as.integer)) %>% 
-                            count(!!!syms(names(.)))
-                          
-                        } else if (type == 'char') {
-                          
-                          select(lzy_tbl, all_of(col)) %>% 
-                            count(!!sym(col)) %>% 
-                            collect()
-                          
-                        } else if (type == 'int') {
-                          
-                          try_int <- 
-                            try(
+                        try_results <- 
+                          try(
+                            
+                            if (type == 'date') {
+                              
+                              select(lzy_tbl, all_of(col)) %>% 
+                                collect() %>% 
+                                mutate(across(everything(), lubridate::ymd)) %>% 
+                                mutate(
+                                  .keep = 'none',
+                                  year  = year(!!sym(col)),
+                                  month = month(!!sym(col)),
+                                ) %>% 
+                                mutate(across(everything(), as.integer)) %>% 
+                                count(!!!syms(names(.)))
+                              
+                            } else if (type == 'char') {
+                              
                               select(lzy_tbl, all_of(col)) %>% 
                                 count(!!sym(col)) %>% 
                                 collect()
-                            )
-                          
-                          if (inherits(try_int, 'try-error')) {
-                            
-                            browser()
-                            try_int <- 
+                              
+                            } else if (type == 'int') {
+                              
+                              try_int <- 
+                                try(
+                                  select(lzy_tbl, all_of(col)) %>% 
+                                    count(!!sym(col)) %>% 
+                                    collect()
+                                )
+                              
+                              if (inherits(try_int, 'try-error')) {
+                                
+                                browser()
+                                try_int <- 
+                                  select(lzy_tbl, all_of(col)) %>% 
+                                  collect() %>% 
+                                  count(!!sym(col))
+                                
+                              }
+                              
+                              try_int
+                              
+                            } else if (type == 'float') {
+                              
                               select(lzy_tbl, all_of(col)) %>% 
-                              collect() %>% 
-                              count(!!sym(col))
+                                collect() %>% 
+                                summarise(
+                                  n       = n(),
+                                  min     = min(na.rm = T, !!sym(col)),
+                                  max     = max(na.rm = T, !!sym(col)),
+                                  mean    = mean(na.rm = T, !!sym(col)),
+                                  median  = median(na.rm = T, !!sym(col)),
+                                  sd      = sd(na.rm = T, !!sym(col)),
+                                  q_1     = quantile(na.rm = T, !!sym(col), probs = c(0.25)),
+                                  q_3     = quantile(na.rm = T, !!sym(col), probs = c(0.75)),
+                                  missing = sum(na.rm = T, is.na(!!sym(col)))
+                                )
+                              
+                            }
                             
-                          }
+                          )
                           
-                          try_int
+                        check_msg <- 
+                          sprintf(
+                            '=== %s / %s %s: %s',
+                            str_pad(n, width = nchar(n_max), side = 'left'),
+                            n_max,
+                            str_pad(type, width = 5, side = 'left'),
+                            str_pad(col,
+                                    width = max(nchar(df_temp$col) + 2),
+                                    side  = 'right', 
+                                    pad   = '.')
+                          )
+                        
+                        if (inherits(try_results, 'try-error')) {
                           
-                        } else if (type == 'float') {
+                          paste(check_msg, 'Retrieving data') %>% 
+                            log_error()
                           
-                          select(lzy_tbl, all_of(col)) %>% 
-                            collect() %>% 
-                            summarise(
-                              n       = n(),
-                              min     = min(na.rm = T, !!sym(col)),
-                              max     = max(na.rm = T, !!sym(col)),
-                              mean    = mean(na.rm = T, !!sym(col)),
-                              median  = median(na.rm = T, !!sym(col)),
-                              sd      = sd(na.rm = T, !!sym(col)),
-                              q_1     = quantile(na.rm = T, !!sym(col), probs = c(0.25)),
-                              q_3     = quantile(na.rm = T, !!sym(col), probs = c(0.75)),
-                              missing = sum(na.rm = T, is.na(!!sym(col)))
-                            )
+                        } else if (nrow(try_results) == 0) {
+                          
+                          paste(check_msg, 'No results') %>% 
+                            log_warn()
+                          
+                        } else {
+                          
+                          paste(check_msg, 'Captured') %>% 
+                            log_success()
                           
                         }
                         
-                      )
-                    
-                    check_msg <- 
-                      sprintf(
-                        '=== %s / %s %s: %s',
-                        str_pad(n, width = nchar(n_max), side = 'left'),
-                        n_max,
-                        str_pad(type, width = 5, side = 'left'),
-                        str_pad(col,
-                                width = max(nchar(df_temp$col) + 2),
-                                side  = 'right', 
-                                pad   = '.')
-                      )
-                    
-                    if (inherits(try_results, 'try-error')) {
-                      
-                      paste(check_msg, 'Retrieving data') %>% 
-                        log_error()
-                      
-                    } else if (nrow(try_results) == 0) {
-                      
-                      paste(check_msg, 'No results') %>% 
-                        log_warn()
-                      
-                    } else {
-                      
-                      paste(check_msg, 'Captured') %>% 
-                        log_success()
-                      
-                    }
-                    
-                    return(try_results)
-                    
-                  }
-                )
-              
-              mutate(df_temp, result = list_counts) %>% 
-                select(-n)
+                        return(try_results)
+                        
+                      }
+                    )
+                  
+                  mutate(df_temp, result = list_counts) %>% 
+                    select(-n)
+                  
+                }
               
             }
+          )
           
         }
       )
@@ -246,5 +242,5 @@ generate_data_count <- function(
 
 
 test <- generate_data_count(mart = 'PAWS Linked Zone', schema = 'na0014aa', type = 'pre_post')
-generate_data_count(type = 'sa_su')
+test <- generate_data_count(type = 'sa_su')
 
