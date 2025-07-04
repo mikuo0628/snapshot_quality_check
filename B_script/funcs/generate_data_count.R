@@ -84,7 +84,7 @@ generate_data_count <- function(
     df_count_results <- 
       df_views %>% 
       # filter(!is.na(db)) %>%
-      pmap(
+      pmap_dfr(
         \(view, dbs){
           
           map_dfr(
