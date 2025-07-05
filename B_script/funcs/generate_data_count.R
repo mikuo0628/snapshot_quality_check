@@ -42,7 +42,9 @@ generate_data_count <- function(
     imap(
       conns,
       ~ phrdwRdata:::map_sql_view(
-        conn = .x, catalog = .y, schema = schema,
+        conn    = .x, 
+        catalog = .y, 
+        schema  = schema,
         include_datatype = T
       )$map
     ) %>% 

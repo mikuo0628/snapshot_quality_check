@@ -155,4 +155,3 @@ derive_metrics <- function(df_output, test_run = F) {
   
 }
 
-generate_metrics(read_rds(files_rds['counts']))

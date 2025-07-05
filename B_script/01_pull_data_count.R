@@ -34,6 +34,8 @@ files_rds <-
   ) %>% 
   set_names(c('counts', 'metrics'))
 
+if (!dir.exists(files_rds['counts'])) dir.create(dirname(files_rds['counts']), recursive = T) 
+
 # number of most recent snapshots to keep
 n_to_keep <- 20
 
@@ -41,6 +43,7 @@ n_to_keep <- 20
 log_ns <- paste(schema, 'snapshot', sep = '_')
 log_threshold(TRACE, namespace = log_ns)
 log_file <- here::here('E_log', paste(schema, 'snapshot.log', sep = '_'))
+if (!dir.exists(dirname(log_file))) dir.create(dirname(log_file))
 log_appender(appender_tee(log_file), namespace = log_namespaces())
 log_layout(
   namespace = log_namespaces(),
@@ -67,8 +70,8 @@ get_logger_meta_variables(namespace = log_ns) %>%
 
 df_output <- 
   generate_data_count(
-    mart   = 'CD',
-    schema = 'phs_cd',
+    mart   = 'PAWS UAT',
+    schema = 'na0014aa',
     type   = 'sa_su'
   )
 
