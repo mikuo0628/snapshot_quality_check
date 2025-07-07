@@ -117,6 +117,7 @@ generate_data_count <- function(
                     map(lubridate::ymd) %>% 
                     map(range, na.rm = T) %>% 
                     map(~ na_if(as.double(.x), c(Inf, -Inf))) %>% 
+                    map(as_date) %>% 
                     map(set_names, c('from', 'to'))
                   
                   tibble(
@@ -134,8 +135,9 @@ generate_data_count <- function(
             
           if (is_tibble(cut_by_dates)) {
             
-            cut_by_dates <- 
+            cut_by_dates <-
               filter(cut_by_dates, .env$view == .data$view) %>% 
+              mutate(across(matches('from|to'), as_date)) %>% 
               summarise(
                 .by  = c(view, col),
                 from = max(from, na.rm = T),
@@ -144,6 +146,7 @@ generate_data_count <- function(
               select(col, from, to) %>% 
               pivot_longer(
                 cols = where(is.Date),
+                # cols = matches('from|to'),
                 names_to  = 'which',
                 values_to = 'date'
               ) %>% 
