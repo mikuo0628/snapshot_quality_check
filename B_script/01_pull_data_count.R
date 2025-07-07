@@ -21,10 +21,11 @@ sapply(
   source
 )
 
-# schema    <- 'na0014aa'
-schema    <- 'phs_cd'
+schema    <- 'na0014aa'
+# schema    <- 'phs_cd'
 # mart      <- 'PAWS Linked Zone'
-mart      <- 'CD'
+mart      <- 'PAWS UAT'
+# mart      <- 'CD'
 type      <- c('pre_post', 'sa_su')[2]
 
 files_rds <- 
@@ -70,9 +71,10 @@ get_logger_meta_variables(namespace = log_ns) %>%
 
 df_output <- 
   generate_data_count(
-    mart   = 'PAWS UAT',
-    schema = 'na0014aa',
-    type   = 'sa_su'
+    mart   = mart,
+    schema = schema,
+    type   = type,
+    cut_by_dates = F
   )
 
 

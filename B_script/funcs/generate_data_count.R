@@ -1,7 +1,8 @@
 generate_data_count <- function(
-    mart   = c('CD', 'PAWS Linked Zone')[1],
-    schema = c('phs_cd', 'na0014aa')[1],
-    type   = c('pre_post', 'sa_su')[1]
+    mart            = c('CD', 'PAWS Linked Zone')[1],
+    schema          = c('phs_cd', 'na0014aa')[1],
+    type            = c('pre_post', 'sa_su')[1],
+    cut_by_dates    = F
 ) {
   
   require(tidyverse)
@@ -67,6 +68,15 @@ generate_data_count <- function(
         )
     )
   
+  if (isTRUE(cut_by_dates)) {
+    
+    list_col_dates <- 
+      list_col_types %>% 
+      map(filter, type ==  'date') %>% 
+      map(filter, str_detect(col, 'birth|dt_tm', negate = T))
+    
+  }
+  
   list_views <-
     conns %>% 
     imap(~ odbc::odbcListObjects(.x, .y, schema)) %>% 
@@ -87,7 +97,70 @@ generate_data_count <- function(
       df_views %>% 
       # filter(!is.na(db)) %>%
       pmap_dfr(
-        \(view, dbs){
+        \(view, dbs) {
+          
+          if (isTRUE(cut_by_dates)) {
+            
+            cut_by_dates <- 
+              map_dfr(
+                rlang::set_names(na.omit(dbs)),
+                \(db) {
+                  
+                  lzy_tbl <- tbl(conns[[db]], in_schema(schema, view))
+                  cols_date <- filter(list_col_dates[[db]], .data$view == .env$view)$col
+                  
+                  date_ranges <-
+                    lzy_tbl %>% 
+                    select(all_of(cols_date)) %>% 
+                    collect() %>% 
+                    as.list() %>% 
+                    map(lubridate::ymd) %>% 
+                    map(range, na.rm = T) %>% 
+                    map(~ na_if(as.double(.x), c(Inf, -Inf))) %>% 
+                    map(set_names, c('from', 'to'))
+                  
+                  tibble(
+                    db          = db,
+                    view        = view,
+                    col         = names(date_ranges),
+                    date_ranges = date_ranges
+                  ) %>% 
+                    unnest_wider(date_ranges)
+                  
+                }
+              )
+            
+          }
+            
+          if (is_tibble(cut_by_dates)) {
+            
+            cut_by_dates <- 
+              filter(cut_by_dates, .env$view == .data$view) %>% 
+              summarise(
+                .by  = c(view, col),
+                from = max(from, na.rm = T),
+                to   = min(to,   na.rm = T),
+              ) %>% 
+              select(col, from, to) %>% 
+              pivot_longer(
+                cols = where(is.Date),
+                names_to  = 'which',
+                values_to = 'date'
+              ) %>% 
+              pmap(
+                \(col, which, date) {
+                  
+                  paste(
+                    col,
+                    ifelse(str_detect(which, 'from'), '>=', '<='),
+                    format(date, "'%Y-%m-%d'")
+                  ) %>% 
+                    rlang::parse_expr()
+                  
+                }
+              )
+            
+          }
           
           map_dfr(
             rlang::set_names(na.omit(dbs)),
@@ -104,6 +177,8 @@ generate_data_count <- function(
               
               lzy_tbl <- tbl(conns[[db]], in_schema(schema, view))
               cols    <- str_subset(colnames(lzy_tbl), '_(id|key)$', negate = T)
+              
+              if (!is.null(cut_by_dates)) lzy_tbl <- filter(lzy_tbl, !!!cut_by_dates)
               
               tibble(
                 db   = db,
