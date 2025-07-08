@@ -184,37 +184,45 @@ generate_data_count <- function(
               cols    <- str_subset(colnames(lzy_tbl), '_(id|key)$', negate = T)
               
               # TODO: temp SA/SU STIBBI joins
-              if (str_detect(view, 'organism|udf_all|body_site_amr')) {
+              if (type == 'sa_su') {
                 
-                if (view == 'vw_lis_organism') {
+                if (str_detect(view, 'organism|udf_all|body_site_amr')) {
                   
-                  lzy_tbl <- 
-                    lzy_tbl %>% 
-                    left_join(
-                      select(
-                        tbl(conns[[db]], in_schema(schema, 'vw_lis_test')),
-                        matches('((test|event)_id|(collection|surveillance)_date)$')
-                      ),
-                      by = 'test_id'
-                    )
-                  
-                } else {
-                  
-                  lzy_tbl <- 
-                    lzy_tbl %>% 
-                    left_join(
-                      select(
-                        tbl(conns[[db]], in_schema(schema, 'vw_phs_investigation')),
-                        matches('((test|event)_id|(collection|surveillance)_date)$')
-                      ),
-                      by = 'disease_event_id'
-                    )
+                  if (view == 'vw_lis_organism') {
+                    
+                    lzy_tbl <- 
+                      lzy_tbl %>% 
+                      left_join(
+                        select(
+                          tbl(conns[[db]], in_schema(schema, 'vw_lis_test')),
+                          matches('((test|event)_id|(collection|surveillance)_date)$')
+                        ),
+                        by = 'test_id'
+                      )
+                    
+                  } else {
+                    
+                    lzy_tbl <- 
+                      lzy_tbl %>% 
+                      left_join(
+                        select(
+                          tbl(conns[[db]], in_schema(schema, 'vw_phs_investigation')),
+                          matches('((test|event)_id|(collection|surveillance)_date)$')
+                        ),
+                        by = 'disease_event_id'
+                      )
+                    
+                  }
                   
                 }
                 
               }
               
-              if (!is.null(cut_by_dates)) lzy_tbl <- filter(lzy_tbl, !!!cut_by_dates)
+              if (!is.null(cut_by_dates) & !isFALSE(cut_by_dates)) {
+                
+                lzy_tbl <- filter(lzy_tbl, !!!cut_by_dates)
+                
+              }
               
               tibble(
                 db   = db,
