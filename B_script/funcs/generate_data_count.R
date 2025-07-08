@@ -85,16 +85,17 @@ generate_data_count <- function(
   
   df_views <-
     list_views %>% 
-    imap(~ tibble(view = .x, dbs = .y)) %>% 
-    reduce(full_join, by = 'view') %>% 
-    nest(dbs = matches('^dbs')) %>% 
-    mutate(dbs = map(dbs, ~ unname(unlist(.x))))
+    imap(~ tibble(view = .x, db = .y)) %>% 
+    reduce(full_join, by = 'view', suffix = paste0('_', names(.))) %>% 
+    nest(dbs = matches('^db_')) %>% 
+    mutate(dbs = map(dbs, ~ unlist(.x)))
   
   run_dt_tm <- Sys.time()
   
   system.time(
     df_count_results <- 
       df_views %>% 
+      filter(!map_lgl(dbs, ~ any(is.na(.x)))) %>% 
       # filter(!is.na(db)) %>%
       pmap_dfr(
         \(view, dbs) {
@@ -140,10 +141,11 @@ generate_data_count <- function(
               mutate(across(matches('from|to'), as_date)) %>% 
               summarise(
                 .by  = c(view, col),
-                from = max(from, na.rm = T),
-                to   = min(to,   na.rm = T),
+                across(matches('from'), max, na.rm = T),
+                across(matches('to'),   min, na.rm = T),
               ) %>% 
-              select(col, from, to) %>% 
+              select(col, matches('^(from|to)$')) %>% 
+              drop_na() %>% 
               pivot_longer(
                 cols = where(is.Date),
                 # cols = matches('from|to'),
@@ -180,6 +182,37 @@ generate_data_count <- function(
               
               lzy_tbl <- tbl(conns[[db]], in_schema(schema, view))
               cols    <- str_subset(colnames(lzy_tbl), '_(id|key)$', negate = T)
+              
+              # TODO: temp SA/SU STIBBI joins
+              if (str_detect(view, 'organism|udf_all|body_site_amr')) {
+                
+                if (view == 'vw_lis_organism') {
+                  
+                  lzy_tbl <- 
+                    lzy_tbl %>% 
+                    left_join(
+                      select(
+                        tbl(conns[[db]], in_schema(schema, 'vw_lis_test')),
+                        matches('((test|event)_id|(collection|surveillance)_date)$')
+                      ),
+                      by = 'test_id'
+                    )
+                  
+                } else {
+                  
+                  lzy_tbl <- 
+                    lzy_tbl %>% 
+                    left_join(
+                      select(
+                        tbl(conns[[db]], in_schema(schema, 'vw_phs_investigation')),
+                        matches('((test|event)_id|(collection|surveillance)_date)$')
+                      ),
+                      by = 'disease_event_id'
+                    )
+                  
+                }
+                
+              }
               
               if (!is.null(cut_by_dates)) lzy_tbl <- filter(lzy_tbl, !!!cut_by_dates)
               

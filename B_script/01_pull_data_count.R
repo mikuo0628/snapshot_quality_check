@@ -74,7 +74,7 @@ df_output <-
     mart   = mart,
     schema = schema,
     type   = type,
-    cut_by_dates = F
+    cut_by_dates = read_csv('A_extdat/filter_dates.csv')
   )
 
 
