@@ -87,7 +87,7 @@ generate_data_count <- function(
     list_views %>% 
     imap(~ tibble(view = .x, db = .y)) %>% 
     reduce(full_join, by = 'view', suffix = paste0('_', names(.))) %>% 
-    nest(dbs = matches('^db_')) %>% 
+    nest(dbs = matches('^db(_|)')) %>% 
     mutate(dbs = map(dbs, ~ unlist(.x))) %>% 
     filter(!map_lgl(dbs, ~ any(is.na(.x))))
   
