@@ -69,13 +69,15 @@ get_logger_meta_variables(namespace = log_ns) %>%
 
 # Connect and count -------------------------------------------------------
 
-df_output <- 
-  generate_data_count(
-    mart   = mart,
-    schema = schema,
-    type   = type,
-    cut_by_dates = read_csv('A_extdat/filter_dates.csv')
-  )
+system.time(
+  df_output <- 
+    generate_data_count(
+      mart   = mart,
+      schema = schema,
+      type   = type,
+      cut_by_dates = read_csv(here::here('A_extdat/filter_dates.csv'))
+    )
+)
 
 
 
@@ -91,7 +93,7 @@ if (!file.exists(files_rds['counts'])) {
     bind_rows(df_output) %>% 
     distinct() %>% 
     group_by(run_dt_tm) %>% 
-    slice_max(run_dt_tm, n = n_keep) %>% 
+    slice_max(run_dt_tm, n = n_to_keep) %>% 
     ungroup() %>% 
     saveRDS(file = files_rds['counts'])
   
