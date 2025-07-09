@@ -2,7 +2,7 @@ derive_metrics <- function(df_output, test_run = F) {
   
   require(tidyverse)
   require(lubridate)
-  browser()
+  
   # check if this will be pre/post or sa/su
   # and reshape accordingly
   df_output <- 
@@ -36,7 +36,7 @@ derive_metrics <- function(df_output, test_run = F) {
     
   }
   
-  compare_groups <- distinct(select(df_output, run_dt_tm, db, group))
+  compare_groups <<- distinct(select(df_output, run_dt_tm, db, group))
   
   df_output %>% 
     select(-matches('db|run_dt_tm')) %>%
@@ -76,7 +76,28 @@ derive_metrics <- function(df_output, test_run = F) {
                 )
               ) {
                 
-                df_compare <- 
+                if (
+                  type == 'char' &
+                  any(map_lgl(baseline, ~ inherits(.x, 'character')))
+                ) {
+                  
+                  df_compare <-
+                    df_compare %>% 
+                    # text cleaning
+                    map(
+                      ~ mutate(
+                        .x,
+                        across(where(is.character), \(x) str_trim(tolower(x)))
+                      ) %>% 
+                        group_by(
+                          !!!syms(names(select(., where(is.character))))
+                        ) %>% 
+                        summarise(n = sum(n, na.rm = T))
+                    )
+                  
+                }
+                
+                df_compare <-
                   df_compare %>% 
                   reduce(
                     left_join,
