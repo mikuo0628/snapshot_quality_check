@@ -88,14 +88,15 @@ generate_data_count <- function(
     imap(~ tibble(view = .x, db = .y)) %>% 
     reduce(full_join, by = 'view', suffix = paste0('_', names(.))) %>% 
     nest(dbs = matches('^db_')) %>% 
-    mutate(dbs = map(dbs, ~ unlist(.x)))
+    mutate(dbs = map(dbs, ~ unlist(.x))) %>% 
+    filter(!map_lgl(dbs, ~ any(is.na(.x))))
   
   run_dt_tm <- Sys.time()
   
   system.time(
     df_count_results <- 
       df_views %>% 
-      filter(!map_lgl(dbs, ~ any(is.na(.x)))) %>% 
+      # filter(view == 'vw_lis_test') %>% 
       # filter(!is.na(db)) %>%
       pmap_dfr(
         \(view, dbs) {
@@ -157,7 +158,8 @@ generate_data_count <- function(
                   
                   paste(
                     col,
-                    ifelse(str_detect(which, 'from'), '>=', '<='),
+                    # ifelse(str_detect(which, 'from'), '>=', '<='),
+                    ifelse(str_detect(which, 'from'), '>', '<'),
                     format(date, "'%Y-%m-%d'")
                   ) %>% 
                     rlang::parse_expr()
@@ -229,6 +231,7 @@ generate_data_count <- function(
                 view = view,
                 col  = cols
               ) %>% 
+                # filter(col == 'patient_city') %>% 
                 left_join(
                   select(
                     list_col_types[[db]],
